@@ -16,7 +16,9 @@ export default /* glsl */`
 vec3 geometryPosition = - vViewPosition;
 vec3 geometryNormal = normal;
 vec3 geometryViewDir = ( isOrthographic ) ? vec3( 0, 0, 1 ) : normalize( vViewPosition );
-
+float staticShadow;
+float dynamicShadow;
+float finalShadow;
 vec3 geometryClearcoatNormal = vec3( 0.0 );
 
 #ifdef USE_CLEARCOAT
@@ -60,9 +62,6 @@ IncidentLight directLight;
 	PointLight pointLight;
 	#if defined( USE_SHADOWMAP ) && NUM_POINT_LIGHT_SHADOWS > 0
 	PointLightShadow pointLightShadow;
-	float staticShadow;
-	float dynamicShadow;
-	float finalShadow;
 	#endif
 
 	#pragma unroll_loop_start
@@ -104,9 +103,6 @@ IncidentLight directLight;
 
 	#if defined( USE_SHADOWMAP ) && NUM_SPOT_LIGHT_SHADOWS > 0
 	SpotLightShadow spotLightShadow;
-	float staticShadow;
-	float dynamicShadow;
-	float finalShadow;
 	#endif
 
 	#pragma unroll_loop_start
@@ -162,9 +158,6 @@ IncidentLight directLight;
 	DirectionalLight directionalLight;
 	#if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
 	DirectionalLightShadow directionalLightShadow;
-	float staticShadow;
-	float dynamicShadow;
-	float finalShadow;
 	#endif
 
 	#pragma unroll_loop_start

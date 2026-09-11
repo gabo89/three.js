@@ -10083,7 +10083,7 @@ class Matrix4 {
 	 */
 	extractBasis( xAxis, yAxis, zAxis ) {
 
-		if ( this.determinant() === 0 ) {
+		if ( this.determinant3x3() === 0 ) {
 
 			xAxis.set( 1, 0, 0 );
 			yAxis.set( 0, 1, 0 );
@@ -10133,7 +10133,7 @@ class Matrix4 {
 	 */
 	extractRotation( m ) {
 
-		if ( m.determinant() === 0 ) {
+		if ( m.determinant3x3() === 0 ) {
 
 			return this.identity();
 
@@ -10491,6 +10491,28 @@ class Matrix4 {
 			n12 * ( n41 * t11 - n43 * t21 + n44 * t22 ) +
 			n13 * ( n41 * t12 - n42 * t21 + n44 * t23 ) -
 			n14 * ( n41 * t13 - n42 * t22 + n43 * t23 );
+
+	}
+
+	/**
+	 * Computes and returns the determinant of the upper-left 3x3 submatrix.
+	 *
+	 * For affine matrices (like an object's world matrix), this value equals the
+	 * full 4x4 {@link Matrix4#determinant} but is cheaper to compute.
+	 *
+	 * @return {number} The determinant of the upper-left 3x3 submatrix.
+	 */
+	determinant3x3() {
+
+		const te = this.elements;
+
+		const n11 = te[ 0 ], n12 = te[ 4 ], n13 = te[ 8 ];
+		const n21 = te[ 1 ], n22 = te[ 5 ], n23 = te[ 9 ];
+		const n31 = te[ 2 ], n32 = te[ 6 ], n33 = te[ 10 ];
+
+		return n11 * ( n22 * n33 - n23 * n32 ) -
+			n12 * ( n21 * n33 - n23 * n31 ) +
+			n13 * ( n21 * n32 - n22 * n31 );
 
 	}
 
@@ -10903,7 +10925,7 @@ class Matrix4 {
 		position.y = te[ 13 ];
 		position.z = te[ 14 ];
 
-		const det = this.determinant();
+		const det = this.determinant3x3();
 
 		if ( det === 0 ) {
 
@@ -29394,9 +29416,6 @@ class CubeDepthTexture extends DepthTexture {
  * This may be a texture from a protected media stream, device camera feed,
  * or other data feeds like a depth sensor.
  *
- * Note that this class is only supported in {@link WebGLRenderer}, and in
- * the {@link WebGPURenderer} WebGPU backend.
- *
  * @augments Texture
  */
 class ExternalTexture extends Texture {
@@ -45858,7 +45877,7 @@ class LightShadow {
 		 * @default null
 		 */
 		this.map = null;
-
+		this.staticMap = null;
 		/**
 		 * The distribution map generated using the internal camera; an occlusion is
 		 * calculated based on the distribution of depths. Computed internally during
@@ -45895,7 +45914,29 @@ class LightShadow {
 		 * @default false
 		 */
 		this.needsUpdate = false;
+		/**
+		 * When set to `true`, static shadow maps will be updated in the next `render` call.
+		 * @default false
+		 * @type {boolean}
+		 */
+		this.staticNeedsUpdate = false;
 
+		/**
+		 * Layer used to compare with other object layer to check if it needs to be rendered on its shadow map pass
+		 *
+		 * @type {Layers}
+		 */
+		this.shadowLayers = new Layers();
+
+		this.shadowLayers.enableAll();
+		this.staticLayer = 0;
+		this.dynamicLayer = 0;
+		/**
+		 * Define if you need double render pass for static and dynamic shadow
+		 *
+		 * @type {number}
+		 */
+		this.requireDualPass = 0;
 		this._frustum = new Frustum();
 		this._frameExtents = new Vector2( 1, 1 );
 
@@ -46006,6 +46047,12 @@ class LightShadow {
 	dispose() {
 
 		if ( this.map ) {
+
+			this.map.dispose();
+
+		}
+
+		if ( this.staticMap ) {
 
 			this.map.dispose();
 
