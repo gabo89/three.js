@@ -45767,6 +45767,7 @@ class LightShadow {
 		 *
 		 * @type {Camera}
 		 */
+		console.log( 'custom LightShadow' );
 		this.camera = camera;
 
 		/**

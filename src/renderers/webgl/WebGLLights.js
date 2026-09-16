@@ -322,7 +322,7 @@ function WebGLLights( extensions ) {
 
 				}
 
-				state.directional[ directionalLength ] = uniforms;
+ea				state.directional[ directionalLength ] = uniforms;
 
 				directionalLength ++;
 
