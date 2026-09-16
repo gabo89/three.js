@@ -397,10 +397,16 @@ function WebGLShadowMap( renderer, objects, capabilities ) {
 				if ( requireTwoRenderPass ) {
 
 					shadow.shadowLayers.set( light.shadow.dynamicLayer );
+					camera.layers.enable( light.shadow.dynamicLayer );
 
+					renderObject( scene, camera, shadow.camera, light, this.type );
+
+					camera.layers.disable( light.shadow.dynamicLayer );
+
+				} else {
+
+					renderObject( scene, camera, shadow.camera, light, this.type );
 				}
-
-				renderObject( scene, camera, shadow.camera, light, this.type );
 
 			}
 
