@@ -68868,6 +68868,7 @@ function WebGLLights( extensions ) {
 
 			state.directionalShadow.length = numDirectionalShadows;
 			state.directionalShadowMap.length = numDirectionalShadows;
+			state.directionalStaticShadowMap.length = numDirectionalShadows;
 			state.pointShadow.length = numPointShadows;
 			state.pointShadowMap.length = numPointShadows;
 			state.spotShadow.length = numSpotShadows;
@@ -69254,8 +69255,7 @@ function WebGLShadowMap( renderer, objects, capabilities ) {
 
 			const light = lights[ i ];
 			const shadow = light.shadow;
-			const requireTwoRenderPass = shadow.staticLayer !== shadow.dynamicLayer;
-			shadow.requireDualPass = requireTwoRenderPass ? 1 : 0;
+
 
 			if ( shadow === undefined ) {
 
@@ -69264,6 +69264,8 @@ function WebGLShadowMap( renderer, objects, capabilities ) {
 
 			}
 
+			const requireTwoRenderPass = shadow.staticLayer !== shadow.dynamicLayer;
+			shadow.requireDualPass = requireTwoRenderPass ? 1 : 0;
 			if ( shadow.autoUpdate === false && shadow.needsUpdate === false ) continue;
 
 			_shadowMapSize.copy( shadow.mapSize );
@@ -69502,6 +69504,7 @@ function WebGLShadowMap( renderer, objects, capabilities ) {
 				} else {
 
 					renderObject( scene, camera, shadow.camera, light, this.type );
+
 				}
 
 			}
@@ -69752,6 +69755,7 @@ function WebGLShadowMap( renderer, objects, capabilities ) {
 		);
 
 		if ( visible && shadowLayerVisible && ( object.isMesh || object.isLine || object.isPoints ) ) {
+
 			if ( ( object.castShadow || ( object.receiveShadow && type === VSMShadowMap ) ) && ( ! object.frustumCulled || _frustum.intersectsObject( object ) ) ) {
 
 				object.modelViewMatrix.multiplyMatrices( shadowCamera.matrixWorldInverse, object.matrixWorld );

@@ -482,6 +482,7 @@ function WebGLLights( extensions ) {
 
 			state.directionalShadow.length = numDirectionalShadows;
 			state.directionalShadowMap.length = numDirectionalShadows;
+			state.directionalStaticShadowMap.length = numDirectionalShadows;
 			state.pointShadow.length = numPointShadows;
 			state.pointShadowMap.length = numPointShadows;
 			state.spotShadow.length = numSpotShadows;
