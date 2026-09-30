@@ -4,6 +4,7 @@ import { Vector3 } from '../math/Vector3.js';
 import { Vector4 } from '../math/Vector4.js';
 import { Frustum } from '../math/Frustum.js';
 import { UnsignedByteType, WebGPUCoordinateSystem } from '../constants.js';
+import { Layers } from '../core/Layers.js';
 
 const _projScreenMatrix = /*@__PURE__*/ new Matrix4();
 const _lightPositionWorld = /*@__PURE__*/ new Vector3();
@@ -29,6 +30,7 @@ class LightShadow {
 		 *
 		 * @type {Camera}
 		 */
+		console.log( 'custom LightShadow' );
 		this.camera = camera;
 
 		/**
@@ -119,7 +121,7 @@ class LightShadow {
 		 * @default null
 		 */
 		this.map = null;
-
+		this.staticMap = null;
 		/**
 		 * The distribution map generated using the internal camera; an occlusion is
 		 * calculated based on the distribution of depths. Computed internally during
@@ -156,7 +158,29 @@ class LightShadow {
 		 * @default false
 		 */
 		this.needsUpdate = false;
+		/**
+		 * When set to `true`, static shadow maps will be updated in the next `render` call.
+		 * @default false
+		 * @type {boolean}
+		 */
+		this.staticNeedsUpdate = false;
 
+		/**
+		 * Layer used to compare with other object layer to check if it needs to be rendered on its shadow map pass
+		 *
+		 * @type {Layers}
+		 */
+		this.shadowLayers = new Layers();
+
+		this.shadowLayers.enableAll();
+		this.staticLayer = 0;
+		this.dynamicLayer = 0;
+		/**
+		 * Define if you need double render pass for static and dynamic shadow
+		 *
+		 * @type {number}
+		 */
+		this.requireDualPass = 0;
 		this._frustum = new Frustum();
 		this._frameExtents = new Vector2( 1, 1 );
 
@@ -267,6 +291,12 @@ class LightShadow {
 	dispose() {
 
 		if ( this.map ) {
+
+			this.map.dispose();
+
+		}
+
+		if ( this.staticMap ) {
 
 			this.map.dispose();
 

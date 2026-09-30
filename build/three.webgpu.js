@@ -60352,6 +60352,21 @@ class Renderer {
 	}
 
 	/**
+	 * Returns `true` if the cached GPU render bundle for the given bundle group is
+	 * out-of-date and must be recorded again.
+	 *
+	 * @private
+	 * @param {BundleGroup} bundleGroup - The bundle group.
+	 * @param {Object} renderBundleData - The backend data of the render bundle.
+	 * @return {boolean} Whether the cached render bundle needs an update.
+	 */
+	_bundleNeedsUpdate( bundleGroup, renderBundleData ) {
+
+		return renderBundleData.bundleGPU === undefined || bundleGroup.version !== renderBundleData.version;
+
+	}
+
+	/**
 	 * Renders the given render bundle.
 	 *
 	 * @private
@@ -60369,19 +60384,11 @@ class Renderer {
 
 		const renderBundle = this._bundles.get( bundleGroup, camera, renderContext );
 		const renderBundleData = this.backend.get( renderBundle );
-
-		const needsUpdate = bundleGroup.version !== renderBundleData.version;
-		const renderBundleNeedsUpdate = needsUpdate || renderBundleData.bundleGPU === undefined;
+		const renderBundleNeedsUpdate = this._bundleNeedsUpdate( bundleGroup, renderBundleData );
 
 		if ( renderBundleNeedsUpdate ) {
 
 			this.backend.beginBundle( renderContext );
-
-			if ( renderBundleData.renderObjects === undefined || needsUpdate ) {
-
-				renderBundleData.renderObjects = [];
-
-			}
 
 			this._currentRenderBundle = renderBundle;
 
@@ -62259,9 +62266,40 @@ class Renderer {
 			const baseRenderList = renderList;
 
 			// replace render list
+
 			renderList = this._renderLists.get( object, camera );
 
-			renderList.begin();
+			const renderBundle = this._bundles.get( object, camera, this._currentRenderContext );
+			const renderBundleData = this.backend.get( renderBundle );
+			const renderBundleNeedsUpdate = this._bundleNeedsUpdate( object, renderBundleData );
+
+			if ( renderBundleNeedsUpdate ) {
+
+				// update render list if necessary
+
+				renderList.begin();
+
+				if ( renderBundleData.renderObjects === undefined ) {
+
+					renderBundleData.renderObjects = [];
+
+				} else {
+
+					renderBundleData.renderObjects.length = 0;
+
+				}
+
+				const children = object.children;
+
+				for ( let i = 0, l = children.length; i < l; i ++ ) {
+
+					this._projectObject( children[ i ], camera, groupOrder, renderList, clippingContext );
+
+				}
+
+				renderList.finish();
+
+			}
 
 			baseRenderList.pushBundle( {
 				bundleGroup: object,
@@ -62269,9 +62307,11 @@ class Renderer {
 				renderList,
 			} );
 
-			renderList.finish();
+			return;
 
 		}
+
+		//
 
 		const children = object.children;
 
@@ -69202,30 +69242,42 @@ class WebGLTextureUtils {
 	createTexture( texture, options ) {
 
 		const { gl, backend } = this;
-		const { levels, width, height, depth } = options;
 
-		const glFormat = backend.utils.convert( texture.format, texture.colorSpace );
-		const glType = backend.utils.convert( texture.type );
-		const glInternalFormat = this.getInternalFormat( texture.internalFormat, glFormat, glType, texture.normalized, texture.colorSpace, texture.isVideoTexture );
+		let textureGPU, glTextureType, glFormat, glType, glInternalFormat;
 
-		const textureGPU = gl.createTexture();
-		const glTextureType = this.getGLTextureType( texture );
+		if ( texture.isExternalTexture === true ) {
 
-		backend.state.bindTexture( glTextureType, textureGPU );
+			textureGPU = texture.sourceTexture;
+			glTextureType = this.getGLTextureType( texture );
 
-		this.setTextureParameters( glTextureType, texture );
+		} else {
 
-		if ( texture.isArrayTexture || texture.isDataArrayTexture || texture.isCompressedArrayTexture ) {
+			const { levels, width, height, depth } = options;
 
-			gl.texStorage3D( gl.TEXTURE_2D_ARRAY, levels, glInternalFormat, width, height, depth );
+			glFormat = backend.utils.convert( texture.format, texture.colorSpace );
+			glType = backend.utils.convert( texture.type );
+			glInternalFormat = this.getInternalFormat( texture.internalFormat, glFormat, glType, texture.normalized, texture.colorSpace, texture.isVideoTexture );
 
-		} else if ( texture.isData3DTexture ) {
+			textureGPU = gl.createTexture();
+			glTextureType = this.getGLTextureType( texture );
 
-			gl.texStorage3D( gl.TEXTURE_3D, levels, glInternalFormat, width, height, depth );
+			backend.state.bindTexture( glTextureType, textureGPU );
 
-		} else if ( ! texture.isVideoTexture ) {
+			this.setTextureParameters( glTextureType, texture );
 
-			gl.texStorage2D( glTextureType, levels, glInternalFormat, width, height );
+			if ( texture.isArrayTexture || texture.isDataArrayTexture || texture.isCompressedArrayTexture ) {
+
+				gl.texStorage3D( gl.TEXTURE_2D_ARRAY, levels, glInternalFormat, width, height, depth );
+
+			} else if ( texture.isData3DTexture ) {
+
+				gl.texStorage3D( gl.TEXTURE_3D, levels, glInternalFormat, width, height, depth );
+
+			} else if ( ! texture.isVideoTexture ) {
+
+				gl.texStorage2D( glTextureType, levels, glInternalFormat, width, height );
+
+			}
 
 		}
 
@@ -69547,7 +69599,7 @@ class WebGLTextureUtils {
 
 		this.deallocateRenderBuffers( renderTarget );
 
-		if ( isDefaultTexture === false ) {
+		if ( isDefaultTexture === false && texture.isExternalTexture !== true ) {
 
 			gl.deleteTexture( textureGPU );
 
@@ -72010,7 +72062,7 @@ class WebGLBackend extends Backend {
 
 		this._bindUniforms( renderObject.getBindings() );
 
-		const frontFaceCW = ( object.isMesh && object.matrixWorld.determinant() < 0 );
+		const frontFaceCW = ( object.isMesh && object.matrixWorld.determinant3x3() < 0 );
 
 		state.setMaterial( material, frontFaceCW, hardwareClippingPlanes );
 
@@ -72864,16 +72916,34 @@ class WebGLBackend extends Backend {
 				const isTyped = isTypedArray( array );
 				const byteOffsetFactor = isTyped ? 1 : array.BYTES_PER_ELEMENT;
 
+				// Update ranges arrive sorted and non-overlapping which makes
+				// it easy to merge contiguous ranges.
+
+				let start = updateRanges[ 0 ].start; // start of the current merged range
+
 				for ( let i = 0, l = updateRanges.length; i < l; i ++ ) {
 
 					const range = updateRanges[ i ];
+					const next = updateRanges[ i + 1 ];
 
-					const dataOffset = range.start * byteOffsetFactor;
-					const size = range.count * byteOffsetFactor;
+					const end = range.start + range.count; // exclusive end of the current range
+
+					// keep merging while the next range is contiguous
+
+					if ( next !== undefined && next.start === end ) continue;
+
+					// write the merged range
+
+					const dataOffset = start * byteOffsetFactor;
+					const size = ( end - start ) * byteOffsetFactor;
 
 					const bufferOffset = dataOffset * ( isTyped ? array.BYTES_PER_ELEMENT : 1 ); // bufferOffset is always in bytes
 
 					gl.bufferSubData( gl.UNIFORM_BUFFER, bufferOffset, array, dataOffset, size );
+
+					// start next if possible
+
+					if ( next !== undefined ) start = next.start;
 
 				}
 
@@ -76491,7 +76561,7 @@ class WebGPUTextureUtils {
 		const backend = this.backend;
 		const textureData = backend.get( texture );
 
-		if ( textureData.texture !== undefined && isDefaultTexture === false ) textureData.texture.destroy();
+		if ( textureData.texture !== undefined && isDefaultTexture === false && texture.isExternalTexture !== true ) textureData.texture.destroy();
 
 		if ( textureData.msaaTexture !== undefined ) textureData.msaaTexture.destroy();
 
@@ -81518,12 +81588,26 @@ class WebGPUBindingUtils {
 			const isTyped = isTypedArray( array );
 			const byteOffsetFactor = isTyped ? 1 : array.BYTES_PER_ELEMENT;
 
+			// Update ranges arrive sorted and non-overlapping which makes
+			// it easy to merge contiguous ranges.
+
+			let start = updateRanges[ 0 ].start; // start of the current merged range
+
 			for ( let i = 0, l = updateRanges.length; i < l; i ++ ) {
 
 				const range = updateRanges[ i ];
+				const next = updateRanges[ i + 1 ];
 
-				const dataOffset = range.start * byteOffsetFactor;
-				const size = range.count * byteOffsetFactor;
+				const end = range.start + range.count; // exclusive end of the current range
+
+				// keep merging while the next range is contiguous
+
+				if ( next !== undefined && next.start === end ) continue;
+
+				// write the merged range
+
+				const dataOffset = start * byteOffsetFactor;
+				const size = ( end - start ) * byteOffsetFactor;
 
 				const bufferOffset = dataOffset * ( isTyped ? array.BYTES_PER_ELEMENT : 1 ); // bufferOffset is always in bytes
 
@@ -81534,6 +81618,10 @@ class WebGPUBindingUtils {
 					dataOffset,
 					size
 				);
+
+				// start next if possible
+
+				if ( next !== undefined ) start = next.start;
 
 			}
 
@@ -82886,7 +82974,7 @@ class WebGPUPipelineUtils {
 
 		let flipSided = ( material.side === BackSide );
 
-		if ( object.isMesh && object.matrixWorld.determinant() < 0 ) flipSided = ! flipSided;
+		if ( object.isMesh && object.matrixWorld.determinant3x3() < 0 ) flipSided = ! flipSided;
 
 		descriptor.frontFace = ( flipSided === true ) ? GPUFrontFace.CW : GPUFrontFace.CCW;
 
@@ -85555,7 +85643,7 @@ class WebGPUBackend extends Backend {
 		const colorFormat = utils.getCurrentColorFormat( renderObject.context );
 		const depthStencilFormat = utils.getCurrentDepthStencilFormat( renderObject.context );
 		const primitiveTopology = utils.getPrimitiveTopology( object, material );
-		const frontFaceCW = ( object.isMesh && object.matrixWorld.determinant() < 0 );
+		const frontFaceCW = ( object.isMesh && object.matrixWorld.determinant3x3() < 0 );
 
 		let needsUpdate = false;
 
@@ -85617,7 +85705,7 @@ class WebGPUBackend extends Backend {
 		// meshes with negative scale have a different frontFace render pipeline
 		// descriptor value so the following must be honored in the cache key
 
-		const frontFaceCW = ( object.isMesh && object.matrixWorld.determinant() < 0 );
+		const frontFaceCW = ( object.isMesh && object.matrixWorld.determinant3x3() < 0 );
 
 		return [
 			material.transparent, material.blending, material.premultipliedAlpha,
